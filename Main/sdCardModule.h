@@ -7,35 +7,20 @@
 
 class SDLogger {
 public:
-    // Constructor with default pin configuration for ESP32 DOIT DevKit v1
-    SDLogger(uint8_t csPin = 5, uint8_t clkPin = 18, uint8_t misoPin = 19, uint8_t mosiPin = 23);
-    
-    // Initialize SD card
+    SDLogger(uint8_t csPin = 5);
     bool begin();
-    
-    // Write data to file
-    bool writeData(const String &data);
-    
-    // Read new data since last read
-    String readNewData();
-    
-    // Check if SD card is available
+    bool logData(const String &dataLine);  // Changed from writeData to logData
+    String readNextLine();  // Changed from readNewData
     bool isAvailable() const { return _sdAvailable; }
-    
-    // Generate sample data (for demonstration)
-    String generateSampleData();
 
 private:
     uint8_t _csPin;
-    uint8_t _clkPin;
-    uint8_t _misoPin;
-    uint8_t _mosiPin;
-    
     bool _sdAvailable;
-    unsigned long _filePosition;
-    const String _filename = "/data.txt";
+    File _dataFile;
+    const String _filename = "/glider_data.csv";
     
-    bool ensureFileExists();
+    bool openFile();
+    void closeFile();
 };
 
 #endif
