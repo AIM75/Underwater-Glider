@@ -1,29 +1,28 @@
 #include "Includes.h"
 
 // Constants
-const float SURFACE_DEPTH = 0.5f;      // 0.5 meters considered surface
+const float SURFACE_DEPTH = 0.1f;      // 0.1 meters considered surface
 const unsigned long SURFACE_COMNS_TIME = 60000; // 1 minute surface comms
 const float MAX_PITCH = 30.0f;         // Maximum pitch angle for gliding
+const float MAX_DEPTH = 0.5f;
+
+// SSID and password of Wifi connection:
+const char* ssid = "AIM-MIA";
+const char* password = "123456789";
+
+IPAddress local_IP(192,168,1,22);
+IPAddress gateway(192,168,1,5);
+IPAddress subnet(255,255,255,0);
+WiFiServer underwater_server(42050);
+WiFiClient client = underwater_server.available();
 
 // Module instances
-MPX5010 depthSensor(34);
+MPX5010 depthSensor(13);
 Orientation orientation;
 SDLogger sdCard;
 BallastServo ballast(25);
-MPU6050DMP imu;
 
-// Mission parameters
-struct MissionParams {
-    float divePitch;
-    float ascendPitch;
-    float targetDepth;
-};
-
-MissionParams currentMission = {
-    .divePitch = 15.0f,    // Default dive pitch
-    .ascendPitch = -15.0f,  // Default ascend pitch
-    .targetDepth = 10.0f    // 10 meters target depth
-};
+String command = "0";
 
 // State machine
 enum GliderState {
@@ -46,7 +45,17 @@ void setup() {
     if (!initializeModules()) {
         emergencyProcedure();
     }
-    
+
+    // Set up WiFi in AP mode
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+  WiFi.softAP(ssid, password);
+  
+  underwater_server.begin();
+  Serial.println("Server started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+   
     Serial.println("System ready");
 }
 
@@ -55,19 +64,13 @@ bool initializeModules() {
     if (!orientation.begin()) return false;
     if (!sdCard.begin()) return false;
     ballast.begin();
-    
-    // IMU initialization with retries
-    for (int i = 0; i < 5; i++) {
-        if (imu.begin()) return true;
-        delay(1000);
-    }
     return false;
 }
 
 void loop() {
+   client = underwater_server.available();
     // Update sensor readings
     updateSensorData();
-    
     // Check surface status
     checkSurface();
     
@@ -80,22 +83,20 @@ void loop() {
 void updateSensorData() {
     float depth = depthSensor.readDepthCm() / 100.0f; // meters
     
-    if (orientation.update()) {
-        float pitch = orientation.getPitch();
-        float roll = orientation.getRoll();
-        int8_t ballastPos = ballast.getPosition();
+    float pitch = orientation.getPitch();
+    float roll = orientation.getRoll();
+    int8_t ballastPos = ballast.getPosition();
         
-        // Create data string
-        String data = String(millis()) + "," +
-                     String(depth, 2) + "," +
-                     String(pitch, 1) + "," +
-                     String(roll, 1) + "," +
-                     String(ballastPos);
-        
-        // Log data when submerged
-        if (!isAtSurface) {
-            sdCard.logData(data);
-        }
+    // Create data string
+    String data = String(millis()) + "," +
+                  String(depth, 2) + "," +
+                  String(pitch, 1) + "," +
+                  String(roll, 1) + "," +
+                  String(ballastPos);
+    Serial.println(analogRead(13));
+    // Log data when submerged
+    if (!isAtSurface) {
+      sdCard.logData(data);
     }
 }
 
@@ -115,135 +116,45 @@ void checkSurface() {
 void onSurface() {
     lastSurfaceTime = millis();
     currentState = SURFACE_COMNS;
-    enableCommunications();
     uploadData();
     checkForCommands();
 }
 
-void runStateMachine() {
-    switch (currentState) {
-        case SURFACE_COMNS:
-            handleSurfaceComms();
-            break;
-        case DESCENDING:
-            handleDescent();
-            break;
-        case GLIDING_DOWN:
-            handleGlideDown();
-            break;
-        case GLIDING_UP:
-            handleGlideUp();
-            break;
-        case ASCENDING:
-            handleAscent();
-            break;
-        case EMERGENCY:
-            handleEmergency();
-            break;
-    }
-}
-
-// State handlers
-void handleSurfaceComms() {
-    ballast.setPosition(0); // Neutral buoyancy
-    
-    // Timeout or receive dive command
-    if (millis() - lastSurfaceTime > SURFACE_COMNS_TIME) {
-        currentState = DESCENDING;
-        disableCommunications();
-    }
-}
-
-void handleDescent() {
-    ballast.setPosition(-80); // Negative buoyancy
-    
-    // Switch to gliding when descending
-    if (orientation.getPitch() > currentMission.divePitch - 5.0f) {
-        currentState = GLIDING_DOWN;
-    }
-}
-
-void handleGlideDown() {
-    // Maintain pitch angle for gliding descent
-    adjustPitch(currentMission.divePitch);
-    
-    // Check depth for transition
-    if (depthSensor.readDepthCm() / 100.0f >= currentMission.targetDepth) {
-        currentState = ASCENDING;
-    }
-}
-
-void handleGlideUp() {
-    // Maintain pitch angle for gliding ascent
-    adjustPitch(currentMission.ascendPitch);
-    
-    // Check for surface approach
-    if (depthSensor.readDepthCm() / 100.0f < currentMission.targetDepth / 2) {
-        currentState = ASCENDING;
-    }
-}
-
-void handleAscent() {
-    ballast.setPosition(80); // Positive buoyancy
-    
-    // Switch to gliding when ascending
-    if (orientation.getPitch() < currentMission.ascendPitch + 5.0f) {
-        currentState = GLIDING_UP;
-    }
-}
-
-void handleEmergency() {
-    ballast.setPosition(100); // Full positive buoyancy
-    adjustPitch(0);           // Level orientation
-}
-
-// Helper functions
-void adjustPitch(float targetPitch) {
-    float currentPitch = orientation.getPitch();
-    float error = targetPitch - currentPitch;
-    
-    // Simple proportional control (adjust gain as needed)
-    int8_t adjustment = constrain(error * 2, -20, 20);
-    ballast.setPosition(adjustment);
-}
 
 void uploadData() {
     String data;
     while ((data = sdCard.readNextLine()).length() > 0) {
         // Send to LabVIEW
-        Serial.println("SEND:" + data);
-        // Implement actual WiFi transmission here
+        while (client) {
+    
+            Serial.println("New Client connected");
+            float readTime = millis();
+            while (client.connected()) {
+                // Send the data to client
+                client.println(data);
+                if ((millis()-readTime) > 5000){                                //strcmp(client.read(),"X") == 0
+                    client.println("Client not connected");
+                    break;}
+            }
+        if ((millis()-readTime) > 5000){                                //strcmp(client.read(),"X") == 0
+            client.println("Client not connected");
+            break;}
+        }
     }
-}
+}    
 
 void checkForCommands() {
     // Example command format: "PITCH:15:-10" (dive:ascend angles)
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        cmd.trim();
-        
-        if (cmd.startsWith("PITCH:")) {
-            int colon1 = cmd.indexOf(':');
-            int colon2 = cmd.indexOf(':', colon1 + 1);
-            
-            if (colon1 != -1 && colon2 != -1) {
-                float dive = cmd.substring(colon1 + 1, colon2).toFloat();
-                float ascend = cmd.substring(colon2 + 1).toFloat();
-                
-                // Constrain pitch angles
-                dive = constrain(dive, 5.0f, MAX_PITCH);
-                ascend = constrain(ascend, -MAX_PITCH, -5.0f);
-                
-                currentMission.divePitch = dive;
-                currentMission.ascendPitch = ascend;
-                
-                Serial.print("New pitch angles - Dive:");
-                Serial.print(dive);
-                Serial.print(" Ascend:");
-                Serial.println(ascend);
-            }
-        }
+    if (client.available()) {
+        command = client.read();
     }
+    else {
+        command = "Still";
+    }
+}
+
+void runStateMachine() {
+
 }
 
 void enableCommunications() {
@@ -256,8 +167,7 @@ void disableCommunications() {
 
 void emergencyProcedure() {
     currentState = EMERGENCY;
-    while (true) {
-        handleEmergency();
+/*    while (true) {
         delay(100);
-    }
+    }*/
 }

@@ -13,7 +13,7 @@ void MPX5010::begin() {
 }
 
 float MPX5010::readPressurekPa() {
-    float voltage_mV = analogRead(_pin) * _ADC_mV;
+    float voltage_mV = (analogRead(_pin)) * _ADC_mV;
     float pressure_mmH2O = (voltage_mV - _sensorOffset) / _sensitivity;
     return pressure_mmH2O * _mmh2O_kpa;
 }

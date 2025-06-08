@@ -30,7 +30,7 @@ private:
     uint8_t _pin;
     float _sensorOffset;  // in mV
     float _sensitivity;   // in mV/mmH2O
-    const float _ADC_mV = 3.3/4095.0;       // conversion multiplier from ADC value to voltage in mV which is the max voltage by the max steps
+    const float _ADC_mV = 3300/4095.0;       // conversion multiplier from ADC value to voltage in mV which is the max voltage by the max steps
     const float _mmh2O_cmH2O = 10;         // divide by this figure to convert mmH2O to cmH2O
     const float _mmh2O_kpa = 0.00981;      // conversion multiplier from mmH2O to kPa
     const float _gravity = 9.80665;         // standard gravity m/s²
