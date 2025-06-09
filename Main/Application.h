@@ -15,8 +15,13 @@
 
 //--------------------------------------------------------Definitions------------------------------------
 
-#define _depthPIN 13
-#define _servoPIN 25
+#define _mpxPIN 36     // MPX5010 pressure sensor pin
+#define _servoPIN 32   // servo motor signal pin
+#define _stepPIN 33    // stepper driver STEP pin
+#define _dirPIN 25     // stepper driver DIR pin
+#define _limSW1PIN 26  // Limit switch 1 pin
+#define _limSW2PIN 27  // Limit switch 2 pin
+
 #define _surfaceDepth 0.1f   // in meter
 #define _maxDepth 1.0f       // in meter
 #define _defaultTHEAT 15.0f  // in deg
@@ -34,7 +39,7 @@ const uint16_t wifi_port = 42050;
 
 // -----------------------------------------------------Module instances--------------------------------------------
 
-MPX5010 depthSensor(_depthPIN);
+MPX5010 depthSensor(_mpxPIN);
 Orientation orientation;
 SDLogger sdCard;
 BallastServo ballast(_servoPIN);
@@ -79,10 +84,10 @@ bool initializeModules() {
 void updateSensorData() {
 
   float depth = depthSensor.readDepthCm() / 100.0f;
-if (orientation.update()){
-  float pitch = orientation.getPitch();
-  float roll = orientation.getRoll();
-}
+  if (orientation.update()) {
+    float pitch = orientation.getPitch();
+    float roll = orientation.getRoll();
+  }
   int8_t ballastPos = ballast.getPosition();
 
   String data = String(millis()) + "," + String(depth, 2) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos);
