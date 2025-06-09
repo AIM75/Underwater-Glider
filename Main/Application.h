@@ -79,8 +79,10 @@ bool initializeModules() {
 void updateSensorData() {
 
   float depth = depthSensor.readDepthCm() / 100.0f;
+if (orientation.update()){
   float pitch = orientation.getPitch();
   float roll = orientation.getRoll();
+}
   int8_t ballastPos = ballast.getPosition();
 
   String data = String(millis()) + "," + String(depth, 2) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos);
