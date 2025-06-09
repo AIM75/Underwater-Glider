@@ -84,6 +84,8 @@ bool initializeModules() {
 void updateSensorData() {
 
   float depth = depthSensor.readDepthCm() / 100.0f;
+  float pitch = -101;
+  float roll  = -101;
   if (orientation.update()) {
     float pitch = orientation.getPitch();
     float roll = orientation.getRoll();

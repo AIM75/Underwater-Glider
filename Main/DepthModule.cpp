@@ -3,8 +3,8 @@
 // Constructor with default calibration values
 MPX5010::MPX5010(uint8_t pin) : 
     _pin(pin),
-    _sensorOffset(200.0),  // default offset from datasheet (mV)
-    _sensitivity(4.413)    // default sensitivity from datasheet (mV/mmH2O)
+    _sensorOffset((0.04+_PerorrKpa * _tempMultiplier * _KpaSensFactor)*_Vin),  // default offset from datasheet (mV)
+    _sensitivity(_KpaSensFactor * _Vin)    // default sensitivity from datasheet (mV/Kpa)
 {
 }
 
@@ -14,14 +14,14 @@ void MPX5010::begin() {
 
 float MPX5010::readPressurekPa() {
     float voltage_mV = (analogRead(_pin)) * _ADC_mV;
-    float pressure_mmH2O = (voltage_mV - _sensorOffset) / _sensitivity;
-    return pressure_mmH2O * _mmh2O_kpa;
+    float pressure_Kpa = (voltage_mV - _sensorOffset) / _sensitivity;
+    return pressure_Kpa;
 }
 
 float MPX5010::readPressureCmH2O() {
     float voltage_mV = analogRead(_pin) * _ADC_mV;
-    float pressure_mmH2O = (voltage_mV - _sensorOffset) / _sensitivity;
-    return pressure_mmH2O / _mmh2O_cmH2O;
+    float pressure_Kpa = (voltage_mV - _sensorOffset) / _sensitivity;
+    return (pressure_Kpa / _mmh2O_kpa)/_mmh2O_cmH2O ;
 }
 
 float MPX5010::readDepthCm() {
@@ -33,27 +33,27 @@ float MPX5010::readDepthCm() {
     return (pressure_kPa * 1000) / (1000 * _gravity) * 100;
 }
 
-void MPX5010::calibrate(float knownPressurekPa) {
-    // Take multiple readings for stability
-    const int numReadings = 10;
-    float sum = 0;
+// void MPX5010::calibrate(float knownPressurekPa) {
+//     // Take multiple readings for stability
+//     const int numReadings = 10;
+//     float sum = 0;
     
-    for (int i = 0; i < numReadings; i++) {
-        sum += analogRead(_pin);
-        delay(10);
-    }
+//     for (int i = 0; i < numReadings; i++) {
+//         sum += analogRead(_pin);
+//         delay(10);
+//     }
     
-    float avgReading = sum / numReadings;
-    float voltage_mV = avgReading * _ADC_mV;
+//     float avgReading = sum / numReadings;
+//     float voltage_mV = avgReading * _ADC_mV;
     
-    // Convert known pressure to mmH2O
-    float knownPressure_mmH2O = knownPressurekPa / _mmh2O_kpa;
+//     // Convert known pressure to mmH2O
+//     float knownPressure_mmH2O = knownPressurekPa / _mmh2O_kpa;
     
-    // Calculate new sensitivity based on known pressure
-    _sensitivity = (voltage_mV - _sensorOffset) / knownPressure_mmH2O;
-}
+//     // Calculate new sensitivity based on known pressure
+//     _sensitivity = (voltage_mV - _sensorOffset) / knownPressure_mmH2O;
+// }
 
-void MPX5010::setCalibration(float offset, float sens) {
-    _sensorOffset = offset;
-    _sensitivity = sens;
-}
+// void MPX5010::setCalibration(float offset, float sens) {
+//     _sensorOffset = offset;
+//     _sensitivity = sens;
+// }
