@@ -171,7 +171,7 @@ void parseDiveParameters(String cmd) {
 
 
 void processCommand(String cmd) {
-  // Command format: "BEGIN_DIVE:PITCH:15:DEPTH:5"
+  // Command format: "BEGIN_DIVE:PITCH:15:DEPTH:5;"
   if (cmd.startsWith("BEGIN_DIVE")) {
     parseDiveParameters(cmd);
     currentState = DESCENDING;

@@ -30,7 +30,7 @@ bool WiFiComms::isConnected() {
 String WiFiComms::receiveCommand() {
   
   if (isConnected() && _client.available()) {
-    String cmd = _client.readStringUntil(':');
+    String cmd = _client.readStringUntil(';');
     cmd.trim();
     return cmd;
   }
