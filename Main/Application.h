@@ -124,6 +124,7 @@ void checkSurface() {
 
   if (depth < _surfaceDepth) {
     if (!isAtSurface) {
+      wifiComms.begin();
       handleSurfaceOperations();
     }
     isAtSurface = true;
