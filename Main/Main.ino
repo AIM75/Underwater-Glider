@@ -13,7 +13,8 @@ void setup() {
 
 void loop() {
   updateSensorData();
+  checkSurface();
   runStateMachine();
-  delay(100);
+  delay(1000);
 }
 

@@ -29,7 +29,7 @@ public:
 private:
   uint8_t _pin;
   float _Vin = 3300;  // input voltage in mV
-  float _PerorrKpa = 0.5;
+  float _PerorrKpa = 0;
   float _tempMultiplier = 1;  // 1 for 0C to 85C
   float _KpaSensFactor = 0.09;
   float _sensorOffset;                  // in mV

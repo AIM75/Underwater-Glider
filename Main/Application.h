@@ -5,6 +5,7 @@
 #include "MPU6050dmp.h"
 #include "DepthModule.h"
 #include "BallastServo.h"
+#include "PitchController.h"
 #include "sdCardModule.h"
 #include "CommunicationModule.h"
 #include <ESP32Servo.h>
@@ -28,6 +29,12 @@
 #define _ballastOPEN 150     // in deg
 #define _ballastCLOSED 60    // in deg
 
+#define _defaultPitch 0.0f       // Default pitch angle (degrees)
+#define _minPitch -30.0f         // Minimum pitch angle
+#define _maxPitch 30.0f          // Maximum pitch angle
+#define _diveDepth 0.15f         // Fixed dive depth (15cm in meters)
+#define _surfaceThreshold 0.03f  // Surface detection threshold (3cm)
+
 //-----------------------------------------------------------WIFI----------------------------------------------
 
 const char* ssid = "AIM-MIA";
@@ -43,6 +50,7 @@ MPX5010 depthSensor(_mpxPIN);
 Orientation orientation;
 SDLogger sdCard;
 BallastServo ballast(_servoPIN);
+PitchController pitchController(_stepPIN, _dirPIN, 200, 100.0f, 2.0f);  // Steps/rev, max travel, lead screw pitch
 WiFiComms wifiComms(ssid, password, local_ip, gateway, subnet, wifi_port);
 
 //------------------------------------------------------------Variables-------------------------
@@ -57,11 +65,22 @@ float targetPitch = _defaultTHEAT;  // Default pitch angle
 float maxDepth = _maxDepth;         // Default max depth (meters)
 bool isAtSurface = false;
 
+float pitch = -101;
+float roll = -101;
+float depth = 0;
+float currentDepth = 0;
+int8_t ballastPos;
+float massPosition;
+float currentPitch = _defaultPitch;
+bool dataSent = false;
+
 // ------------------------------------------------------Functions Declarations-----------------------------------------
 bool initializeModules();
 void updateSensorData();
 void checkSurface();
+//void onSurface();
 void handleSurfaceOperations();
+void sendStoredData();
 void parseDiveParameters(String cmd);
 void processCommand(String cmd);
 void runStateMachine();
@@ -70,55 +89,87 @@ void emergencyProcedure();
 
 //----------------------------------------------Functions Definitions----------------------------------------
 
+//-------------------------------------------Initialization and Updating-------------------------------------
 
 bool initializeModules() {
   depthSensor.begin();
   orientation.begin();
-  sdCard.begin();
+  //sdCard.begin();
   ballast.begin();
   wifiComms.begin();
   return true;
 }
 
-
 void updateSensorData() {
 
-  float depth = depthSensor.readDepthCm() / 100.0f;
-  float pitch = -101;
-  float roll  = -101;
+  depth = depthSensor.readDepthCm() / 100.0f;
+  pitch = -101;
+  roll = -101;
   if (orientation.update()) {
-    float pitch = orientation.getPitch();
-    float roll = orientation.getRoll();
+    pitch = orientation.getPitch();
+    roll = orientation.getRoll();
   }
-  int8_t ballastPos = ballast.getPosition();
+  ballastPos = ballast.getPosition();
+  massPosition = pitchController.getCurrentPosition();
 
-  String data = String(millis()) + "," + String(depth, 2) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos);
+  String data = String(millis()) + "," + String(depth, 3) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos) + "," + String(massPosition, 1) + "," + String(targetPitch, 1);
+
+  Serial.println(data);
+  Serial.println(analogRead(_mpxPIN));
+  Serial.println("--------------------------------------------------------------------------------------");
 
   if (!isAtSurface) {
     sdCard.logData(data);
   }
 }
 
+//---------------------------------------------------State Machine-------------------------------------------
+
 void runStateMachine() {
-  float currentDepth = depthSensor.readDepthCm() / 100.0f;
+  currentDepth = depthSensor.readDepthCm() / 100.0f;
 
   switch (currentState) {
     case SURFACE_COMNS:
       ballast.setPosition(_ballastCLOSED);
+      pitchController.setTargetPitch(0);  // Level at surface
+      pitchController.update();
+
+      if (!dataSent && wifiComms.isConnected()) {
+        sendStoredData();
+        dataSent = true;
+      }
       checkSurface();
       break;
 
     case DESCENDING:
+      // Set movable mass to achieve target pitch
+      pitchController.setTargetPitch(targetPitch);
+      pitchController.update();
+
+      // Open ballast for descent
       ballast.setPosition(_ballastOPEN);
-      if (currentDepth > maxDepth) {
+
+      // Check if reached dive depth
+      if (currentDepth >= _diveDepth) {
         currentState = ASCENDING;
+        Serial.println("Reached dive depth, beginning ascent");
       }
       break;
 
     case ASCENDING:
+      // Maintain target pitch during ascent
+      pitchController.setTargetPitch(targetPitch);
+      pitchController.update();
+
+      // Close ballast for ascent
       ballast.setPosition(_ballastCLOSED);
-      if (currentDepth < _surfaceDepth) {
+
+      // Check if reached surface
+      if (currentDepth <= _surfaceThreshold) {
         currentState = SURFACE_COMNS;
+        dataSent = false;
+        wifiComms.begin();  // Restart communications
+        Serial.println("Reached surface, waiting for commands");
       }
       break;
 
@@ -128,8 +179,10 @@ void runStateMachine() {
   }
 }
 
+//---------------------------------------------------Implementation-------------------------------------------
+
 void checkSurface() {
-  float depth = depthSensor.readDepthCm() / 100.0f;
+  depth = depthSensor.readDepthCm() / 100.0f;
 
   if (depth < _surfaceDepth) {
     if (!isAtSurface) {
@@ -142,6 +195,13 @@ void checkSurface() {
   }
 }
 
+// void onSurface() {
+//     lastSurfaceTime = millis();
+//     currentState = SURFACE_COMNS;
+//     enableCommunications();
+//     uploadData();
+//     checkForCommands();
+// }
 
 void handleSurfaceOperations() {
   // Send all SD card data
@@ -161,6 +221,14 @@ void handleSurfaceOperations() {
   }
 }
 
+void sendStoredData() {
+  String data;
+  while ((data = sdCard.readNextLine()).length() > 0) {
+    wifiComms.sendData(data);
+    delay(10);  // Prevent flooding
+  }
+  //sdCard.clearDataFile();
+}
 
 void parseDiveParameters(String cmd) {
   int pitchIndex = cmd.indexOf("PITCH:");
@@ -168,15 +236,17 @@ void parseDiveParameters(String cmd) {
 
   if (pitchIndex != -1) {
     targetPitch = cmd.substring(pitchIndex + 6, cmd.indexOf(':', pitchIndex + 6)).toFloat();
+    targetPitch = constrain(targetPitch, _minPitch, _maxPitch);
   }
   if (depthIndex != -1) {
+    // We're using fixed depth now, but keep this for future flexibility
     maxDepth = cmd.substring(depthIndex + 6).toFloat();
   }
 
   Serial.print("Dive params - Pitch: ");
   Serial.print(targetPitch);
-  Serial.print(", Max Depth: ");
-  Serial.println(maxDepth);
+  Serial.print("°, Depth: ");
+  Serial.println(_diveDepth);
 }
 
 
@@ -185,11 +255,29 @@ void processCommand(String cmd) {
   if (cmd.startsWith("BEGIN_DIVE")) {
     parseDiveParameters(cmd);
     currentState = DESCENDING;
-    wifiComms.end();  // Power down WiFi
+    dataSent = false;
+    wifiComms.end();  // Power down WiFi during dive
+    Serial.println("Beginning dive sequence");
   }
 }
 
 void emergencyProcedure() {
+  // Immediately surface
+  ballast.setPosition(_ballastCLOSED);
+  pitchController.setTargetPitch(0);  // Level position
+  pitchController.update();
+
+  // Attempt communications
+  wifiComms.begin();
+
+  while (true) {
+    updateSensorData();
+    if (depthSensor.readDepthCm() / 100.0f <= _surfaceThreshold) {
+      break;
+    }
+    delay(100);
+  }
+  currentState = SURFACE_COMNS;
 }
 
 #endif
