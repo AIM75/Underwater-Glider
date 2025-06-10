@@ -135,10 +135,7 @@ void runStateMachine() {
       pitchController.setTargetPitch(0); // Level at surface
       pitchController.update();
       
-      if (!dataSent && wifiComms.isConnected()) {
-        sendStoredData();
-        dataSent = true;
-      }
+      checkSurface();
       break;
 
     case DESCENDING:
@@ -183,13 +180,13 @@ void checkSurface() {
   depth = depthSensor.readDepthCm() / 100.0f;
 
   if (depth < _surfaceDepth) {
-    if (!isAtSurface) {
+    if (!isAtSurface && !wifiComms.isConnected()) {
       wifiComms.begin();
-      handleSurfaceOperations();
     }
     isAtSurface = true;
   } else {
     isAtSurface = false;
+    handleSurfaceOperations();
   }
 }
 

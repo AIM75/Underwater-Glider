@@ -13,10 +13,9 @@ void setup() {
 
 void loop() {
   updateSensorData();
-  checkSurface();
   runStateMachine();
 
-  // Debug output
+  /*// Debug output
   static unsigned long lastPrint = 0;
   if (millis() - lastPrint > 1000) {
     lastPrint = millis();
@@ -32,7 +31,7 @@ void loop() {
     Serial.print(currentDepth);
     Serial.println("m");
   }
-  
+  */
   delay(1000);
 }
 

@@ -1,7 +1,7 @@
 #include "sdCardModule.h"
 
 // ESP32 SD Card pins (default HSPI)
-SDLogger sdCard; // CS on GPIO5
+SDLogger sdCard(5); // CS on GPIO5
 
 void setup() {
   Serial.begin(115200);
