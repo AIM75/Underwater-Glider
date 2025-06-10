@@ -5,7 +5,7 @@
 #define DIR_PIN 25
 
 // Mechanical parameters (adjust for your system)
-const uint16_t STEPS_PER_REV = 200;    // 1.8° stepper
+const uint16_t STEPS_PER_REV = 200*32;    // 1.8° stepper
 const float MAX_TRAVEL = 100.0f;       // mm
 const float LEAD_SCREW_PITCH = 2.0f;   // mm/revolution
 
@@ -18,14 +18,12 @@ void setup() {
 }
 
 void loop() {
-    if (Serial.available()) {
-        float desiredPitch = Serial.parseFloat();
+        float desiredPitch = 0+ millis()/1000;
         Serial.print("Setting pitch to: ");
         Serial.print(desiredPitch);
         Serial.println(" degrees");
         
         pitchController.setTargetPitch(desiredPitch);
-    }
     
     pitchController.update();
     

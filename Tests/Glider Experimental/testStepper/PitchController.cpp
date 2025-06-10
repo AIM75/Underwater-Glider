@@ -21,7 +21,7 @@ void PitchController::begin() {
 
 void PitchController::setTargetPitch(float targetPitch) {
     // Constrain input pitch angle
-    targetPitch = constrain(targetPitch, -30.0f, 30.0f);
+    targetPitch = constrain(targetPitch, -90.0f, 90.0f);
     
     // Convert pitch angle to mass position
     _targetPosition = _pitchToPosition(targetPitch);

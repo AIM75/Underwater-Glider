@@ -45,6 +45,9 @@ private:
     const float _leadScrewPitch;
     float _currentPosition; // mm from center
     float _targetPosition;  // mm from center
+    uint8_t _vrefPin;  // PWM pin for VREF control
+    float _currentLimit; // in amps
+
     
     /**
      * @brief Convert pitch angle to mass position
