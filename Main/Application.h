@@ -23,7 +23,8 @@
 #define _limSW1PIN 26  // Limit switch 1 pin
 #define _limSW2PIN 27  // Limit switch 2 pin
 
-#define _surfaceDepth 0.1f   // in meter
+#define _surfaceDepth 0.03f   // in meter
+#define _minDepth 0.01f      // in meter
 #define _maxDepth 1.0f       // in meter
 #define _defaultTHEAT 15.0f  // in deg
 #define _ballastOPEN 150     // in deg
@@ -32,7 +33,6 @@
 #define _defaultPitch 0.0f       // Default pitch angle (degrees)
 #define _minPitch -30.0f         // Minimum pitch angle
 #define _maxPitch 30.0f          // Maximum pitch angle
-#define _diveDepth 0.15f         // Fixed dive depth (15cm in meters)
 #define _surfaceThreshold 0.03f  // Surface detection threshold (3cm)
 
 //-----------------------------------------------------------WIFI----------------------------------------------
@@ -68,6 +68,7 @@ bool isAtSurface = false;
 float pitch = -101;
 float roll = -101;
 float depth = 0;
+float diveDepth;
 float currentDepth = 0;
 int8_t ballastPos;
 float massPosition;
@@ -131,45 +132,41 @@ void runStateMachine() {
   switch (currentState) {
     case SURFACE_COMNS:
       ballast.setPosition(_ballastCLOSED);
-      pitchController.setTargetPitch(0);  // Level at surface
+      pitchController.setTargetPitch(0); // Level at surface
       pitchController.update();
-
+      
       if (!dataSent && wifiComms.isConnected()) {
         sendStoredData();
         dataSent = true;
       }
-      checkSurface();
       break;
 
     case DESCENDING:
-      // Set movable mass to achieve target pitch
+      // Use target pitch for descent
       pitchController.setTargetPitch(targetPitch);
       pitchController.update();
-
-      // Open ballast for descent
-      ballast.setPosition(_ballastOPEN);
-
-      // Check if reached dive depth
-      if (currentDepth >= _diveDepth) {
+      
+      if (currentDepth >= diveDepth) {  // Use received diveDepth
         currentState = ASCENDING;
-        Serial.println("Reached dive depth, beginning ascent");
+        ballast.setPosition(_ballastCLOSED);
+        Serial.println("Reached target depth - beginning ascent");
+        break;
       }
+      
+      ballast.setPosition(_ballastOPEN); // Keep open during descent
       break;
 
     case ASCENDING:
       // Maintain target pitch during ascent
       pitchController.setTargetPitch(targetPitch);
       pitchController.update();
-
-      // Close ballast for ascent
-      ballast.setPosition(_ballastCLOSED);
-
-      // Check if reached surface
+      
       if (currentDepth <= _surfaceThreshold) {
         currentState = SURFACE_COMNS;
         dataSent = false;
-        wifiComms.begin();  // Restart communications
-        Serial.println("Reached surface, waiting for commands");
+        wifiComms.begin();
+        Serial.println("Surfaced - ready for new commands");
+        break;
       }
       break;
 
@@ -178,8 +175,9 @@ void runStateMachine() {
       break;
   }
 }
-
 //---------------------------------------------------Implementation-------------------------------------------
+
+//-------------------------------------------------Surface Operations-----------------------------------------
 
 void checkSurface() {
   depth = depthSensor.readDepthCm() / 100.0f;
@@ -204,17 +202,26 @@ void checkSurface() {
 // }
 
 void handleSurfaceOperations() {
-  // Send all SD card data
-  /*
-  File dataFile = sdCard.openDataFile();
-  while (dataFile.available()) {
-    wifiComms.sendData(dataFile.readStringUntil('\n'));
+  // Ensure SD card is available
+  if (!sdCard.isAvailable()) {
+    Serial.println("SD card not available for data transmission");
+    return;
   }
-  dataFile.close();
-  sdCard.clearDataFile();
-  */
 
-  // Process commands
+  // Send all stored data line by line
+  String dataLine;
+  while ((dataLine = sdCard.readNextLine()).length() > 0) {
+  wifiComms.sendData(dataLine);
+    delay(10); // Small delay between transmissions
+  }
+
+  // Clear data file after successful transmission
+  if (SD.exists(sdCard.getFileName())) {
+    SD.remove(sdCard.getFileName());
+    Serial.println("Cleared data file after transmission");
+  }
+
+  // Process incoming commands
   String cmd = wifiComms.receiveCommand();
   if (cmd.length() > 0) {
     processCommand(cmd);
@@ -230,54 +237,63 @@ void sendStoredData() {
   //sdCard.clearDataFile();
 }
 
+//-------------------------------------------------Processing Data-----------------------------------------
+
 void parseDiveParameters(String cmd) {
   int pitchIndex = cmd.indexOf("PITCH:");
   int depthIndex = cmd.indexOf("DEPTH:");
-
+  
   if (pitchIndex != -1) {
     targetPitch = cmd.substring(pitchIndex + 6, cmd.indexOf(':', pitchIndex + 6)).toFloat();
     targetPitch = constrain(targetPitch, _minPitch, _maxPitch);
   }
+  
   if (depthIndex != -1) {
-    // We're using fixed depth now, but keep this for future flexibility
-    maxDepth = cmd.substring(depthIndex + 6).toFloat();
+    diveDepth = cmd.substring(depthIndex + 6).toFloat(); // Get depth from command
+    diveDepth = constrain(diveDepth, _surfaceThreshold + 0.05f, _maxDepth); // Apply constraints
   }
 
   Serial.print("Dive params - Pitch: ");
   Serial.print(targetPitch);
   Serial.print("°, Depth: ");
-  Serial.println(_diveDepth);
+  Serial.println(diveDepth);
 }
 
-
 void processCommand(String cmd) {
-  // Command format: "BEGIN_DIVE:PITCH:15:DEPTH:5;"
   if (cmd.startsWith("BEGIN_DIVE")) {
     parseDiveParameters(cmd);
     currentState = DESCENDING;
     dataSent = false;
-    wifiComms.end();  // Power down WiFi during dive
-    Serial.println("Beginning dive sequence");
+    wifiComms.end();
+    
+    Serial.print("Beginning dive with Pitch:");
+    Serial.print(targetPitch);
+    Serial.print("° to Depth:");
+    Serial.print(diveDepth);
+    Serial.println("m");
   }
 }
 
+//----------------------------------------------------Emergency--------------------------------------------
+
 void emergencyProcedure() {
-  // Immediately surface
+  //imediately surface
   ballast.setPosition(_ballastCLOSED);
-  pitchController.setTargetPitch(0);  // Level position
+  pitchController.setTargetPitch(0);
   pitchController.update();
-
-  // Attempt communications
+  
+  //attempt communications
   wifiComms.begin();
-
+  
   while (true) {
     updateSensorData();
-    if (depthSensor.readDepthCm() / 100.0f <= _surfaceThreshold) {
+    if (depthSensor.readDepthCm()/100.0f <= _surfaceThreshold) {
+      currentState = SURFACE_COMNS;
+      dataSent = false;
       break;
     }
     delay(100);
   }
-  currentState = SURFACE_COMNS;
 }
 
 #endif
