@@ -203,10 +203,10 @@ void checkSurface() {
 
 void handleSurfaceOperations() {
   // Ensure SD card is available
-  if (!sdCard.isAvailable()) {
+  /*if (!sdCard.isAvailable()) {
     Serial.println("SD card not available for data transmission");
     return;
-  }
+  }*/
 
   // Send all stored data line by line
   String dataLine;
