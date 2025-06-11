@@ -6,12 +6,16 @@ PitchController::PitchController(const PitchConfig& config)
   : _config(config),
     _stepper(AccelStepper::DRIVER, config.step_pin, config.dir_pin),
     _current_phase(DivePhase::DESCENDING),
-    _current_mass_pos(config.cob_position - _config.mechanism_start + 10.0f)  // Start 10mm ahead of COB tilting abit for more in the water
-{
+    _current_mass_pos(config.cob_position - _config.mechanism_start + 10.0f),  // Start 10mm ahead of COB tilting abit for more in the water
+    _limit_min_hit(false),
+    _limit_max_hit(false) {
 }
 
 void PitchController::begin() {
   pinMode(_config.sleep_pin, OUTPUT);
+  pinMode(_config.limit_switch_min_pin, INPUT_PULLUP);
+  pinMode(_config.limit_switch_max_pin, INPUT_PULLUP);
+
   _enableMotor();
 
   // Configure motion profile (all in mm/s)
@@ -20,7 +24,34 @@ void PitchController::begin() {
 
   _stepper.setMaxSpeed(_mmToSteps(max_speed_mmps));
   _stepper.setAcceleration(_mmToSteps(max_accel_mmps2));
-  _stepper.setCurrentPosition(_mmToSteps(_current_mass_pos));
+
+  // Calibrate on startup
+  calibrate();
+}
+
+void PitchController::calibrate() {
+  _enableMotor();
+
+  // Move to min limit switch
+  _stepper.setSpeed(-_mmToSteps(10.0f));  // Slow speed for homing
+  while (digitalRead(_config.limit_switch_min_pin) {
+    _stepper.runSpeed();
+  }
+  _stepper.stop();
+  _stepper.setCurrentPosition(0);
+  _current_mass_pos = 0.0f;
+  _limit_min_hit = true;
+  
+  // Move a bit away from the limit switch
+  _stepper.moveTo(_mmToSteps(5.0f));
+  while (_stepper.distanceToGo() != 0) {
+    _stepper.run();
+  }
+  // Configure normal motion profile again
+  const float max_speed_mmps = 50.0f;
+  const float max_accel_mmps2 = 100.0f;
+  _stepper.setMaxSpeed(_mmToSteps(max_speed_mmps));
+  _stepper.setAcceleration(_mmToSteps(max_accel_mmps2));
 }
 
 void PitchController::_alignToFullStep() {
@@ -57,9 +88,25 @@ void PitchController::setTargetPitch(float pitch_deg) {  // +ve for pitching up 
 }
 
 void PitchController::update() {
+  // Check limit switches
+  _limit_min_hit = !digitalRead(_config.limit_switch_min_pin);
+  _limit_max_hit = !digitalRead(_config.limit_switch_max_pin);
+
+  if (_limit_min_hit) {
+    _stepper.stop();
+    _stepper.setCurrentPosition(0);
+    _current_mass_pos = 0.0f;
+  } else if (_limit_max_hit) {
+    _stepper.stop();
+    _stepper.setCurrentPosition(_mmToSteps(_config.max_travel));
+    _current_mass_pos = _config.max_travel;
+  }
+
   if (_stepper.distanceToGo() != 0) {
     _stepper.run();
-    _current_mass_pos = _stepper.currentPosition() / _mmToSteps(1.0f);
+    if (digitalRead(_config.sleep_pin)) {  // Only update position if motor is awake
+      _current_mass_pos = _stepper.currentPosition() / _mmToSteps(1.0f);
+    }
   } else {
     _safeSleep();
   }

@@ -8,6 +8,8 @@ struct PitchConfig {
     uint8_t step_pin;
     uint8_t dir_pin;
     uint8_t sleep_pin;
+    uint8_t limit_switch_min_pin;  // Add this - limit switch at start position
+    uint8_t limit_switch_max_pin;  // Add this - limit switch at end position
     
     // Mechanical properties (all in mm)
     uint16_t steps_per_rev = 200;     // NEMA 17 steps/revolution
@@ -45,6 +47,7 @@ private:
     AccelStepper _stepper;
     DivePhase _current_phase;
     float _current_mass_pos;  // Current mass position in mm
+    bool _limit_min_hit, _limit_max_hit;
     
     // Physics model coefficients
     static constexpr float ASCEND_P1 = -0.0025f;  // θ = p1*y² + p2*y + p3
@@ -61,6 +64,7 @@ private:
     void _enableMotor();
     void _safeSleep();
     void _alignToFullStep();
+    void calibrate();
 };
 
 #endif
