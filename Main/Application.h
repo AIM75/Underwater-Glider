@@ -16,12 +16,13 @@
 
 //--------------------------------------------------------Definitions------------------------------------
 
-#define _mpxPIN 36     // MPX5010 pressure sensor pin
+#define _mpxPIN 35     // MPX5010 pressure sensor pin
 #define _servoPIN 32   // servo motor signal pin
-#define _stepPIN 33    // stepper driver STEP pin
-#define _dirPIN 25     // stepper driver DIR pin
-#define _limSW1PIN 26  // Limit switch 1 pin
-#define _limSW2PIN 27  // Limit switch 2 pin
+#define _stepPIN 26    // stepper driver STEP pin
+#define _dirPIN 33     // stepper driver DIR pin
+#define _slpPIN 27     // stepper driver SLP pin
+#define _limSW1PIN 12  // Limit switch 1 pin
+#define _limSW2PIN 14  // Limit switch 2 pin
 
 #define _surfaceDepth 0.03f  // in meter
 #define _minDepth 0.01f      // in meter
@@ -95,7 +96,7 @@ void emergencyProcedure();
 bool initializeModules() {
   depthSensor.begin();
   orientation.begin();
-  //sdCard.begin();
+  sdCard.begin();
   ballast.begin();
   wifiComms.begin();
   return true;
@@ -198,10 +199,10 @@ void checkSurface() {
 
 void handleSurfaceOperations() {
   // Ensure SD card is available
-  /*if (!sdCard.isAvailable()) {
+  if (!sdCard.isAvailable()) {
     Serial.println("SD card not available for data transmission");
     return;
-  }*/
+  }
 
   // Send all stored data line by line
   String dataLine;
