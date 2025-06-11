@@ -2,8 +2,8 @@
 
 // Pin configuration for ESP32 DOIT DevKit v1
 #define STEP_PIN 26   // GPIO26 connected to stepper driver STEP
-#define DIR_PIN 27    // GPIO25 connected to stepper driver DIR
-#define SLEEP_PIN 33  // GPIO33 connected to stepper driver SLEEP
+#define DIR_PIN 33    // GPIO25 connected to stepper driver DIR
+#define SLEEP_PIN 27  // GPIO33 connected to stepper driver SLEEP
 
 // Glider configuration
 PitchConfig config = {
@@ -15,12 +15,12 @@ PitchConfig config = {
   // Mechanical properties
   .steps_per_rev = 200,
   .lead_screw_pitch = 8.0f,  // 8mm lead screw
-  .max_travel = 20.0f,       // 100mm max travel
+  .max_travel = 155.0f,       // 100mm max travel
 
   // Physics parameters (mm from tail)
   .cob_position = 205.55f,   // Center of buoyancy
   .cop_position = 199.5f,    // Center of pressure
-  .mechanism_start = 50.0f,  // Mass mechanism start position
+  .mechanism_start = 45.0f,  // Mass mechanism start position
 
   // Driver configuration
   .microsteps = 32  // 1/32 microstepping
@@ -30,7 +30,7 @@ PitchController pitchController(config);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial); // Wait for serial connection
+  // while (!Serial); // Wait for serial connection
   
   pitchController.begin();
   
@@ -40,20 +40,20 @@ void setup() {
 }
 
 void loop() {
-  // Handle serial commands
-  if (Serial.available()) {
-    handleSerialCommand();
-  }
+  // // Handle serial commands
+  // if (Serial.available()) {
+  //   handleSerialCommand();
+  // }
 
-  // Update controller state
-  pitchController.update();
+  // // Update controller state
+  // pitchController.update();
   
-  // Periodic status report
-  static unsigned long lastPrint = 0;
-  if (millis() - lastPrint > 1000) {
-    lastPrint = millis();
-    printStatus();
-  }
+  // // Periodic status report
+  // static unsigned long lastPrint = 0;
+  // if (millis() - lastPrint > 1000) {
+  //   lastPrint = millis();
+  //   printStatus();
+  // }
 }
 
 void handleSerialCommand() {

@@ -34,7 +34,7 @@ void PitchController::calibrate() {
 
   // Move to min limit switch
   _stepper.setSpeed(-_mmToSteps(10.0f));  // Slow speed for homing
-  while (digitalRead(_config.limit_switch_min_pin) {
+  while (digitalRead(_config.limit_switch_min_pin)) {
     _stepper.runSpeed();
   }
   _stepper.stop();
