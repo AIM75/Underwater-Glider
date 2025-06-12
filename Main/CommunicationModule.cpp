@@ -28,7 +28,7 @@ bool WiFiComms::isConnected() {
 }
 
 String WiFiComms::receiveCommand() {
-  
+
   if (isConnected() && _client.available()) {
     String cmd = _client.readStringUntil(';');
     cmd.trim();
@@ -38,7 +38,8 @@ String WiFiComms::receiveCommand() {
 }
 
 void WiFiComms::sendData(const String& data) {
-  if (isConnected()) {
-    _client.println(data);
-  }
+  // if (isConnected()) {
+  //   _client.println(data);
+  // }
+  _client.println(data);
 }
