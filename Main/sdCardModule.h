@@ -23,7 +23,7 @@ private:
   uint8_t _csPin;
   bool _sdAvailable;
   File _dataFile;
-  const String _filename = "/glider_data.csv";
+  const String _filename = "/gliderr_data.txt";
 
   bool openFile();
   void closeFile();

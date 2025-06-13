@@ -28,22 +28,22 @@ bool SDLogger::begin() {
 bool SDLogger::logData(const String &dataLine) {
   if (!_sdAvailable || !openFile()) return false;
 
-  _dataFile.println(dataLine);
+  _dataFile.print(dataLine);
   closeFile();
   return true;
 }
 
 String SDLogger::readNextLine() {
-  if (!_sdAvailable || !openFile()) return "";
+  if (!_sdAvailable || !openFile()) return "A";
 
-  String line = _dataFile.readStringUntil('\n');
+  String line = _dataFile.readStringUntil(';');
   line.trim();
-
+Serial.println("line");
   // If we reached end of file, start from beginning
   if (!_dataFile.available()) {
     _dataFile.seek(0);
     // Skip header
-    _dataFile.readStringUntil('\n');
+    _dataFile.readStringUntil(';');
   }
 
   closeFile();

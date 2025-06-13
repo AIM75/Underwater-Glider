@@ -39,9 +39,9 @@ public:
     
     float getCurrentPitch() const;
     float getCurrentMassPosition() const;  // Returns position in mm
-    bool isMoving();
+    bool getStepsToGo();
     DivePhase getCurrentPhase() const;
-
+    void calibrate();
 private:
     const PitchConfig _config;
     AccelStepper _stepper;
@@ -64,7 +64,7 @@ private:
     void _enableMotor();
     void _safeSleep();
     void _alignToFullStep();
-    void calibrate();
+
 };
 
 #endif

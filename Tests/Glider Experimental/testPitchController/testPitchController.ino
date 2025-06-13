@@ -1,118 +1,67 @@
 #include "PitchController.h"
+#define _stepPIN 26    // stepper driver STEP pin
+#define _dirPIN 33     // stepper driver DIR pin
+#define _slpPIN 27     // stepper driver DIR pin
+#define _limSW1PIN 14  // Limit switch 1 pin
+#define _limSW2PIN 12  // Limit switch 2 pin
 
-// Pin configuration for ESP32 DOIT DevKit v1
-#define STEP_PIN 26   // GPIO26 connected to stepper driver STEP
-#define DIR_PIN 33    // GPIO25 connected to stepper driver DIR
-#define SLEEP_PIN 27  // GPIO33 connected to stepper driver SLEEP
-
-// Glider configuration
+// Update these pin numbers to match your actual wiring
 PitchConfig config = {
-  // Pin configuration
-  .step_pin = STEP_PIN,
-  .dir_pin = DIR_PIN,
-  .sleep_pin = SLEEP_PIN,
-
-  // Mechanical properties
-  .steps_per_rev = 200,
-  .lead_screw_pitch = 8.0f,  // 8mm lead screw
-  .max_travel = 155.0f,       // 100mm max travel
-
-  // Physics parameters (mm from tail)
-  .cob_position = 205.55f,   // Center of buoyancy
-  .cop_position = 199.5f,    // Center of pressure
-  .mechanism_start = 45.0f,  // Mass mechanism start position
-
-  // Driver configuration
-  .microsteps = 32  // 1/32 microstepping
+  .step_pin = _stepPIN,
+  .dir_pin = _dirPIN,
+  .sleep_pin = _slpPIN,
+  .limit_switch_min_pin = _limSW1PIN,
+  .limit_switch_max_pin = _limSW2PIN,
+  // Keep other defaults or adjust as needed
 };
 
 PitchController pitchController(config);
 
 void setup() {
   Serial.begin(115200);
-  // while (!Serial); // Wait for serial connection
-  
   pitchController.begin();
-  
-  Serial.println(F("Underwater Glider Pitch Controller"));
-  Serial.println(F("System initialized"));
-  printStatus();
+  Serial.println("Starting automatic stepper test...");
 }
 
 void loop() {
-  // // Handle serial commands
-  // if (Serial.available()) {
-  //   handleSerialCommand();
-  // }
+  // Run calibration (homes to min position)
+  Serial.println("Running calibration (homing to min position)...");
+  pitchController.calibrate();
+  delay(1000);
 
-  // // Update controller state
-  // pitchController.update();
-  
-  // // Periodic status report
-  // static unsigned long lastPrint = 0;
-  // if (millis() - lastPrint > 1000) {
-  //   lastPrint = millis();
-  //   printStatus();
-  // }
-}
-
-void handleSerialCommand() {
-  char cmd = Serial.read();
-  float angle;
-  int phase;
-  
-  switch (cmd) {
-    case 'a': // Set pitch angle
-      while(!(angle = Serial.parseFloat()));
-      pitchController.setTargetPitch(angle);
-      Serial.print(F("Set target pitch to: "));
-      Serial.print(angle);
-      Serial.println(F("°"));
-      break;
-      
-    case 'u': // Set dive phase 1=descend, else=ascend)
-      while(!(phase = Serial.parseFloat()));
-      if (phase == 1) {
-        pitchController.setDivePhase(PitchController::DivePhase::DESCENDING);
-        Serial.println(F("Phase set to DESCENDING"));
-      } else {
-        pitchController.setDivePhase(PitchController::DivePhase::ASCENDING);
-        Serial.println(F("Phase set to ASCENDING"));
-      }
-      break;
-      
-    case 's': // Emergency stop
-      pitchController.emergencyStop();
-      Serial.println(F("EMERGENCY STOP ACTIVATED"));
-      break;
-      
-    case 'p': // Print status
-      printStatus();
-      break;
-      
-    default:
-      Serial.println(F("Unknown command"));
-      break;
+  // Move to max position (using pitch command)
+  Serial.println("Moving to max position...");
+  pitchController.setTargetPitch(10); // Use a pitch that should go to max
+  while(pitchController.getStepsToGo() != 0) {
+    pitchController.update();
   }
-  
-  // Clear serial buffer
-  while (Serial.available()) Serial.read();
-}
+  delay(1000);
 
-void printStatus() {
-  Serial.println(F("\n=== Glider Status ==="));
-  Serial.print(F("Dive Phase: "));
-  Serial.println(pitchController.getCurrentPhase() == PitchController::DivePhase::ASCENDING ? "ASCENDING" : "DESCENDING");
+  // Move back to min position (using pitch command)
+  Serial.println("Moving back to min position...");
+  pitchController.setTargetPitch(-10); // Use a pitch that should go to min
+  while(pitchController.getStepsToGo() != 0) {
+    pitchController.update();
+  }
+  delay(1000);
+
+  // Move to center position
+  Serial.println("Moving to center position...");
+  pitchController.setTargetPitch(0); // Should move to neutral position
+  while(pitchController.getStepsToGo() != 0) {
+    pitchController.update();
+  }
+  delay(1000);
+
+  // Print current status
+  Serial.println("Current status:");
+  Serial.print("Mass position: ");
+  Serial.print(pitchController.getCurrentMassPosition());
+  Serial.println(" mm");
+  Serial.print("Pitch angle: ");
+  Serial.print(pitchController.getCurrentPitch());
+  Serial.println(" deg");
   
-  Serial.print(F("Current Pitch: "));
-  Serial.print(pitchController.getCurrentPitch(), 1);
-  Serial.println(F("°"));
-  
-  Serial.print(F("Mass Position: "));
-  Serial.print(pitchController.getCurrentMassPosition(), 1);
-  Serial.println(F("mm"));
-  
-  Serial.print(F("Motor State: "));
-  Serial.println(pitchController.isMoving() ? "MOVING" : "IDLE");
-  Serial.println();
+  Serial.println("Test cycle complete. Restarting in 5 seconds...");
+  delay(5000);
 }

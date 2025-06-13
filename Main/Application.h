@@ -24,8 +24,8 @@
 #define _limSW1PIN 14  // Limit switch 1 pin
 #define _limSW2PIN 12  // Limit switch 2 pin
 
-#define _surfaceDepth 0.1f   // in meter
-#define _maxDepth 1.0f       // in meter
+#define _surfaceDepth 2.0f   // in cm
+#define _maxDepth 10.0f      // in cm
 #define _defaultTHEAT 15.0f  // in deg
 #define _ballastOPEN 150     // in deg
 #define _ballastCLOSED 60    // in deg
@@ -36,16 +36,18 @@ PitchConfig config = {
   .step_pin = _stepPIN,
   .dir_pin = _dirPIN,
   .sleep_pin = _slpPIN,
+  .limit_switch_min_pin = _limSW2PIN,
+  .limit_switch_max_pin = _limSW1PIN,
 
   // Mechanical properties
   .steps_per_rev = 200,
   .lead_screw_pitch = 8.0f,  // 8mm lead screw
-  .max_travel = 155.0f,      // 100mm max travel
+  .max_travel = 65.0f,      // 100mm max travel
 
   // Physics parameters (mm from tail)
   .cob_position = 205.55f,   // Center of buoyancy
   .cop_position = 199.5f,    // Center of pressure
-  .mechanism_start = 45.0f,  // Mass mechanism start position
+  .mechanism_start = 27.0f,  // Mass mechanism start position
 
   // Driver configuration
   .microsteps = 32  // 1/32 microstepping
@@ -79,8 +81,12 @@ GliderState currentState = SURFACE_COMNS;
 
 float targetPitchU = _defaultTHEAT;   // Default pitch angle
 float targetPitchD = -_defaultTHEAT;  // Default pitch angle
-float maxDepth = _maxDepth;           // Default max depth (meters)
-bool isAtSurface = true;
+float maxDepth = _maxDepth;           // Default max depth (cm)
+
+float depth;
+float pitch;
+float roll;
+int8_t ballastPos;
 
 // ------------------------------------------------------Functions Declarations-----------------------------------------
 bool initializeModules();
@@ -97,65 +103,66 @@ void emergencyProcedure();
 
 bool initializeModules() {
   depthSensor.begin();
-  pitchController.begin();
+  wifiComms.begin();
   orientation.begin();
   sdCard.begin();
   ballast.begin();
-  wifiComms.begin();
+  pitchController.begin();
   return true;
 }
 
 
 void updateSensorData() {
 
-  float depth = depthSensor.readDepthCm() / 100.0f;
-  float pitch = -101;
-  float roll = -101;
+  depth = depthSensor.readDepthCm();
+  pitch = -101;
+  roll = -101;
   if (orientation.update()) {
-    float pitch = orientation.getPitch();
-    float roll = orientation.getRoll();
+    pitch = orientation.getPitch();
+    roll = orientation.getRoll();
   }
-  int8_t ballastPos = ballast.getPosition();
+  ballastPos = ballast.getPosition();
 
-  String data = String(millis()) + "," + String(depth, 2) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos);
-
-  if (!isAtSurface) {
-    sdCard.logData(data);
-  }
+  String data = String(millis()) + "," + String(depth, 2) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos) + ";";
+  Serial.println(data);
+  sdCard.logData(data);
 }
 
 void runStateMachine() {
-  float currentDepth = depthSensor.readDepthCm() / 100.0f;
+  depth = depthSensor.readDepthCm();
 
   switch (currentState) {
+    Serial.println("Surface");
     case SURFACE_COMNS:
-      // ballast.setPosition(_ballastCLOSED);
       while (currentState == SURFACE_COMNS) {
         checkSurface();
       }
       break;
 
     case DESCENDING:
+      Serial.println("Descending");
       pitchController.setDivePhase(PitchController::DivePhase::DESCENDING);
       pitchController.setTargetPitch(targetPitchD);
-      while (pitchController.getStepsToGo() > 5) {
+      while (pitchController.getStepsToGo() != 0) {
         pitchController.update();
+        // Serial.println("Running Descending");
       }
       ballast.setPosition(_ballastOPEN);
-      if (currentDepth > maxDepth) {
+      if (depth > maxDepth) {
         currentState = ASCENDING;
       }
       break;
 
     case ASCENDING:
-      // move the movable
+      Serial.println("Ascending");
       ballast.setPosition(_ballastCLOSED);
       pitchController.setDivePhase(PitchController::DivePhase::ASCENDING);
       pitchController.setTargetPitch(targetPitchU);
-      while (pitchController.getStepsToGo() < -5) {
+      while (pitchController.getStepsToGo() != 0) {
         pitchController.update();
+        Serial.println("Running Ascending");
       }
-      if (currentDepth < _surfaceDepth) {
+      if (depth < _surfaceDepth) {
         currentState = SURFACE_COMNS;
       }
       break;
@@ -167,7 +174,7 @@ void runStateMachine() {
 }
 
 void checkSurface() {
-  float depth = depthSensor.readDepthCm() / 100.0f;
+  depth = depthSensor.readDepthCm();
 
   if (depth < _surfaceDepth) {
     if (!(wifiComms.isConnected())) {
@@ -181,23 +188,24 @@ void checkSurface() {
 
 void handleSurfaceOperations() {
   // Ensure SD card is available
-  if (!sdCard.isAvailable()) {
-    Serial.println("SD card not available for data transmission");
-    return;
-  }
+  // if (!sdCard.isAvailable()) {
+  //   Serial.println("SD card not available for data transmission");
+  //   return;
+  // }
 
-  // Send all stored data line by line
-  String dataLine;
-  while (((dataLine = sdCard.readNextLine()).length() > 0) && wifiComms.isConnected()) {
-    wifiComms.sendData(dataLine);
-    delay(10);  // Small delay between transmissions
-  }
+  // // Send all stored data line by line
+  // String dataLine;
+  // while (((dataLine = sdCard.readNextLine()).length() > 0) && wifiComms.isConnected()) {
+  //   wifiComms.sendData(dataLine);
+  //   Serial.println("sent");
+  //   delay(10);  // Small delay between transmissions
+  // }
 
   // Clear data file after successful transmission
-  if (SD.exists(sdCard.getFileName())) {
-    SD.remove(sdCard.getFileName());
-    Serial.println("Cleared data file after transmission");
-  }
+  // if (SD.exists(sdCard.getFileName())) {
+  //   SD.remove(sdCard.getFileName());
+  //   Serial.println("Cleared data file after transmission");
+  // }
 
   // Process incoming commands
   String cmd = wifiComms.receiveCommand();
@@ -213,6 +221,9 @@ void processCommand(String cmd) {
     parseDiveParameters(cmd);
     currentState = DESCENDING;
     wifiComms.end();  // Power down WiFi
+  } else if (cmd.startsWith("CHGPIT")) {
+    parseDiveParameters(cmd);
+    currentState = DESCENDING;
   }
 }
 

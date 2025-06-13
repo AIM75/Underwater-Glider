@@ -138,8 +138,8 @@ float PitchController::getCurrentMassPosition() const {
   return _current_mass_pos;
 }
 
-bool PitchController::isMoving() {
-  return _stepper.distanceToGo() != 0;
+bool PitchController::getStepsToGo() {
+  return _stepper.distanceToGo();
 }
 
 PitchController::DivePhase PitchController::getCurrentPhase() const {
