@@ -1,26 +1,28 @@
-#include "BallastServo.h"
+#include "Ballast.h"
 
-BallastServo::BallastServo(uint8_t pin) :
+Ballast::Ballast(uint8_t pin) :
     _pin(pin),
     _currentPosition(0)
 {
+    pinMode(_pin,OUTPUT);
 }
 
-void BallastServo::begin(int pos) {
+void Ballast::begin(int pos) {
     ESP32PWM::allocateTimer(0);
 	ESP32PWM::allocateTimer(1);
 	ESP32PWM::allocateTimer(2);
 	ESP32PWM::allocateTimer(3);
 	_servo.setPeriodHertz(50); 
-    _servo.attach(_pin, 1000, 2000);
-    setPosition(pos); // Start at neutral position
+    
+    _servo.attach(_pin);
+    setPosition(pos); // Start at Closed position
 }
 
-void BallastServo::setPosition(int8_t position) {    
+void Ballast::setPosition(int8_t position) {    
     _servo.write(position);
     _currentPosition = position;
 }
 
-int8_t BallastServo::getPosition() const {
+int8_t Ballast::getPosition() const {
     return _currentPosition;
 }

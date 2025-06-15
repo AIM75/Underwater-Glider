@@ -20,11 +20,6 @@ public:
   // Calculate water depth in cm
   float readDepthCm();
 
-  // Calibration function (call when sensor is at known pressure)
-  // void calibrate(float knownPressurekPa);
-
-  // Set custom calibration values
-  // void setCalibration(float offset, float sens);
 
 private:
   uint8_t _pin;

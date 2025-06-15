@@ -1,18 +1,17 @@
-#ifndef BALLASTSERVO_H
-#define BALLASTSERVO_H
+#ifndef BALLAST_H
+#define BALLAST_H
 
 #include <Arduino.h>
 #include <ESP32Servo.h>
+#include <ESP32PWM.h>
 
-class BallastServo {
+class Ballast {
 public:
     /**
      * @brief Constructor
      * @param pin GPIO pin connected to servo
-     * @param minPulse Minimum pulse width in microseconds (default 1000)
-     * @param maxPulse Maximum pulse width in microseconds (default 2000)
      */
-    BallastServo(uint8_t pin);
+    Ballast(uint8_t pin);
 
     /**
      * @brief Initialize the servo
@@ -20,14 +19,14 @@ public:
     void begin(int pos);
 
     /**
-     * @brief Set ballast position (-100 to 100)
-     * @param position Negative values for descent, positive for ascent
+     * @brief Set ballast position 
+     * @param position for servo is 0 - 180
      */
     void setPosition(int8_t position);
 
     /**
      * @brief Get current ballast position
-     * @return Current position (-100 to 100)
+     * @return Current position (0 to 180)
      */
     int8_t getPosition() const;
 

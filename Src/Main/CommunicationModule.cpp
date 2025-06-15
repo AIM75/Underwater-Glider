@@ -38,8 +38,7 @@ String WiFiComms::receiveCommand() {
 }
 
 void WiFiComms::sendData(const String& data) {
-  // if (isConnected()) {
-  //   _client.println(data);
-  // }
-  _client.println(data);
+  if (isConnected()) {
+    _client.println(data);
+  }
 }

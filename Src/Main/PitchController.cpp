@@ -95,20 +95,17 @@ void PitchController::update() {
   // Check limit switches
   _limit_min_hit = !digitalRead(_config.limit_switch_min_pin);
   _limit_max_hit = !digitalRead(_config.limit_switch_max_pin);
-  // Serial.println(_stepper.distanceToGo());
+
   if (_limit_min_hit) {
     _stepper.stop();
     _stepper.setCurrentPosition(0);
     _current_mass_pos = 0.0f;
     _hitLIMSW(70, 5.0f);
-    // _stepper.moveTo(_mmToSteps(_current_mass_pos + 5.0f));
   } else if (_limit_max_hit) {
     _stepper.stop();
     _stepper.setCurrentPosition(_mmToSteps(_config.max_travel));
     _current_mass_pos = _config.max_travel;
     _hitLIMSW(-70, _current_mass_pos - 5.0f);
-    Serial.println(_stepper.currentPosition());
-    _stepper.moveTo(48000);
   }else if (_stepper.distanceToGo() != 0) {
     _stepper.run();
     if (digitalRead(_config.sleep_pin)) {  // Only update position if motor is awake

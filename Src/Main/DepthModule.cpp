@@ -32,28 +32,3 @@ float MPX5010::readDepthCm() {
     // Result in meters: *100 to cm
     return (pressure_kPa * 1000) / (1000 * _gravity) * 100;
 }
-
-// void MPX5010::calibrate(float knownPressurekPa) {
-//     // Take multiple readings for stability
-//     const int numReadings = 10;
-//     float sum = 0;
-    
-//     for (int i = 0; i < numReadings; i++) {
-//         sum += analogRead(_pin);
-//         delay(10);
-//     }
-    
-//     float avgReading = sum / numReadings;
-//     float voltage_mV = avgReading * _ADC_mV;
-    
-//     // Convert known pressure to mmH2O
-//     float knownPressure_mmH2O = knownPressurekPa / _mmh2O_kpa;
-    
-//     // Calculate new sensitivity based on known pressure
-//     _sensitivity = (voltage_mV - _sensorOffset) / knownPressure_mmH2O;
-// }
-
-// void MPX5010::setCalibration(float offset, float sens) {
-//     _sensorOffset = offset;
-//     _sensitivity = sens;
-// }
