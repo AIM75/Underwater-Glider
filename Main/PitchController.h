@@ -1,64 +1,72 @@
-#ifndef PITCHCONTROLLER_H
-#define PITCHCONTROLLER_H
+#ifndef PITCH_CONTROLLER_H
+#define PITCH_CONTROLLER_H
 
 #include <AccelStepper.h>
 
+struct PitchConfig {
+  // Pin configuration
+  uint8_t step_pin;
+  uint8_t dir_pin;
+  uint8_t sleep_pin;
+  uint8_t limit_switch_min_pin;  // Add this - limit switch at start position
+  uint8_t limit_switch_max_pin;  // Add this - limit switch at end position
+
+  // Mechanical properties (all in mm)
+  uint16_t steps_per_rev = 200;   // NEMA 17 steps/revolution
+  float lead_screw_pitch = 8.0f;  // Lead screw pitch (mm/rev)
+  float max_travel = 120.0f;      // Maximum linear travel (mm)
+
+  // Glider physics (positions relative to tail in mm)
+  float cob_position = 205.55f;   // Center of buoyancy
+  float cop_position = 199.5f;    // Center of pressure
+  float mechanism_start = 27.0f;  // Start position of movable mass
+
+  // Microstepping configuration
+  uint8_t microsteps = 32;
+};
+
 class PitchController {
 public:
-    /**
-     * @brief Constructor for pitch controller
-     * @param stepPin Stepper motor step pin
-     * @param dirPin Stepper motor direction pin
-     * @param stepsPerRev Steps per revolution of the stepper
-     * @param maxTravel Maximum linear travel distance of mass (mm)
-     * @param leadScrewPitch Lead screw pitch (mm/revolution)
-     */
-    PitchController(uint8_t stepPin, uint8_t dirPin, uint16_t stepsPerRev, 
-                  float maxTravel, float leadScrewPitch);
+  enum class DivePhase { ASCENDING,
+                         DESCENDING };
 
-    /**
-     * @brief Initialize the pitch controller
-     */
-    void begin();
+  PitchController(const PitchConfig& config);
 
-    /**
-     * @brief Set target pitch angle
-     * @param targetPitch Desired pitch angle in degrees (-30 to 30)
-     */
-    void setTargetPitch(float targetPitch);
+  void begin();
+  void setDivePhase(DivePhase phase);
+  void setTargetPitch(float pitch_deg);
+  void update();
+  void emergencyStop();
 
-    /**
-     * @brief Run the controller (call in loop)
-     */
-    void update();
-
-    /**
-     * @brief Get current mass position
-     * @return Position in mm from center
-     */
-    float getCurrentPosition() const;
+  float getCurrentPitch() const;
+  float getCurrentMassPosition() const;  // Returns position in mm
+  bool getStepsToGo();
+  DivePhase getCurrentPhase() const;
 
 private:
-    AccelStepper _stepper;
-    const uint16_t _stepsPerRev;
-    const float _maxTravel;
-    const float _leadScrewPitch;
-    float _currentPosition; // mm from center
-    float _targetPosition;  // mm from center
-    
-    /**
-     * @brief Convert pitch angle to mass position
-     * @param pitch Angle in degrees
-     * @return Required mass position in mm
-     */
-    float _pitchToPosition(float pitch) const;
-    
-    /**
-     * @brief Convert mm position to steps
-     * @param mm Position in millimeters
-     * @return Number of steps
-     */
-    long _mmToSteps(float mm) const;
+  const PitchConfig _config;
+  AccelStepper _stepper;
+  DivePhase _current_phase;
+  float _current_mass_pos;  // Current mass position in mm
+  bool _limit_min_hit, _limit_max_hit;
+
+  // Physics model coefficients
+  static constexpr float ASCEND_P1 = -0.0025f;  // θ = p1*y² + p2*y + p3
+  static constexpr float ASCEND_P2 = 0.157f;
+  static constexpr float ASCEND_P3 = 0.0785f;
+  static constexpr float DESCEND_SLOPE = -1.697f;  // θ = 1.697*y + 0.1217
+  static constexpr float DESCEND_INTERCEPT = -0.1217f;
+
+  // Core calculations
+  float _pitchToMassPosition(float pitch_rad) const;
+  float _ascendingModel(float pitch_rad) const;
+  float _descendingModel(float pitch_rad) const;
+  long _mmToSteps(float position_mm) const;
+  void _enableMotor();
+  void _safeSleep();
+  void _alignToFullStep();
+  void calibrate();
+  void _hitLIMSW(int speed,float pos);
 };
 
 #endif

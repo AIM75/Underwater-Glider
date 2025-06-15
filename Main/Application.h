@@ -1,18 +1,21 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
+
+
 // Include section
 #include "Orientation.h"
 #include "MPU6050dmp.h"
 #include "DepthModule.h"
+#include "sdCardModule.h"
+#include "DataLogger.h"  // Replaced SDLogger with DataLogger
+#include "CommunicationModule.h"
 #include "BallastServo.h"
 #include "PitchController.h"
-#include "sdCardModule.h"
-#include "CommunicationModule.h"
 #include <ESP32Servo.h>
 #include <ESP32PWM.h>
 
 
-//-------------------------------------------------------Configurations------------------------------------
+//-------------------------------------------------------Configurations------------------------------------//
 
 //--------------------------------------------------------Definitions------------------------------------
 
@@ -20,21 +23,38 @@
 #define _servoPIN 32   // servo motor signal pin
 #define _stepPIN 26    // stepper driver STEP pin
 #define _dirPIN 33     // stepper driver DIR pin
-#define _slpPIN 27     // stepper driver SLP pin
-#define _limSW1PIN 12  // Limit switch 1 pin
-#define _limSW2PIN 14  // Limit switch 2 pin
+#define _slpPIN 27     // stepper driver DIR pin
+#define _limSW1PIN 14  // Limit switch 1 pin
+#define _limSW2PIN 12  // Limit switch 2 pin
 
-#define _surfaceDepth 0.03f  // in meter
-#define _minDepth 0.01f      // in meter
-#define _maxDepth 1.0f       // in meter
+#define _surfaceDepth 2.0f   // in cm
+#define _maxDepth 10.0f      // in cm
 #define _defaultTHEAT 15.0f  // in deg
-#define _ballastOPEN 150     // in deg
-#define _ballastCLOSED 60    // in deg
+#define _ballastOPEN 30     // in deg
+#define _ballastCLOSED 160    // in deg
 
-#define _defaultPitch 0.0f       // Default pitch angle (degrees)
-#define _minPitch -30.0f         // Minimum pitch angle
-#define _maxPitch 30.0f          // Maximum pitch angle
-#define _surfaceThreshold 0.03f  // Surface detection threshold (3cm)
+
+PitchConfig config = {
+  // Pin configuration
+  .step_pin = _stepPIN,
+  .dir_pin = _dirPIN,
+  .sleep_pin = _slpPIN,
+  .limit_switch_min_pin = _limSW2PIN,
+  .limit_switch_max_pin = _limSW1PIN,
+
+  // Mechanical properties
+  .steps_per_rev = 200,
+  .lead_screw_pitch = 8.0f,
+  .max_travel = 65.0f,
+
+  // Physics parameters (mm from tail)
+  .cob_position = 205.55f,   // Center of buoyancy
+  .cop_position = 199.5f,    // Center of pressure
+  .mechanism_start = 27.0f,  // Mass mechanism start position
+
+  // Driver configuration
+  .microsteps = 32  // 1/32 microstepping
+};
 
 //-----------------------------------------------------------WIFI----------------------------------------------
 
@@ -50,9 +70,10 @@ const uint16_t wifi_port = 42050;
 MPX5010 depthSensor(_mpxPIN);
 Orientation orientation;
 SDLogger sdCard;
-BallastServo ballast(_servoPIN);
-PitchController pitchController(_stepPIN, _dirPIN, 200, 100.0f, 2.0f);  // Steps/rev, max travel, lead screw pitch
+DataLogger dataLogger("/glider_data.log");  // Replaced SDLogger with DataLogger
 WiFiComms wifiComms(ssid, password, local_ip, gateway, subnet, wifi_port);
+PitchController pitchController(config);
+BallastServo myServo(_servoPIN);
 
 //------------------------------------------------------------Variables-------------------------
 
@@ -62,23 +83,16 @@ enum GliderState { SURFACE_COMNS,
                    EMERGENCY };
 GliderState currentState = SURFACE_COMNS;
 
-float targetPitch = _defaultTHEAT;  // Default pitch angle
-float maxDepth = _maxDepth;         // Default max depth (meters)
-bool isAtSurface = false;
+float targetPitchU = _defaultTHEAT;   // Default pitch angle
+float targetPitchD = -_defaultTHEAT;  // Default pitch angle
+float maxDepth = _maxDepth;           // Default max depth (cm)
 
-float pitch = -101;
-float roll = -101;
-float depth = 0;
-float diveDepth;
-float currentDepth = 0;
-int8_t ballastPos;
-float massPosition;
-float currentPitch = _defaultPitch;
-bool dataSent = false;
+float depth;        // in cm
+float pitch, roll;  // in deg
 
 // ------------------------------------------------------Functions Declarations-----------------------------------------
 bool initializeModules();
-void updateSensorData();
+void DataLogging();
 void checkSurface();
 //void onSurface();
 void handleSurfaceOperations();
@@ -88,63 +102,66 @@ void processCommand(String cmd);
 void runStateMachine();
 void emergencyProcedure();
 
-
 //----------------------------------------------Functions Definitions----------------------------------------
 
 //-------------------------------------------Initialization and Updating-------------------------------------
 
 bool initializeModules() {
+  myServo.begin(_ballastCLOSED);
   depthSensor.begin();
-  orientation.begin();
-  sdCard.begin();
-  ballast.begin();
   wifiComms.begin();
+  orientation.begin();
+  // sdCard.begin();
+  dataLogger.begin();
+  // pitchController.begin();
+  
   return true;
 }
 
-void updateSensorData() {
 
-  depth = depthSensor.readDepthCm() / 100.0f;
-  pitch = -101;
-  roll = -101;
+void DataLogging() {
+
+  depth = depthSensor.readDepthCm();
+  pitch = -101;  // just a pre defined No. to figure out if the orientaion is not updated due to fault in measurements
+  roll = -101;   // just a pre defined No. to figure out if the orientaion is not updated due to fault in measurements
   if (orientation.update()) {
     pitch = orientation.getPitch();
     roll = orientation.getRoll();
   }
-  ballastPos = ballast.getPosition();
-  massPosition = pitchController.getCurrentPosition();
 
-  String data = String(millis()) + "," + String(depth, 3) + "," + String(pitch, 1) + "," + String(roll, 1) + "," + String(ballastPos) + "," + String(massPosition, 1) + "," + String(targetPitch, 1);
+String data = ":Data:" + String(pitch, 1) + "," + String(depth, 2) + "::Servo:";
 
+  // sdCard.logData(data);
+  dataLogger.logData(data);
   Serial.println(data);
-  Serial.println(analogRead(_mpxPIN));
-  Serial.println("--------------------------------------------------------------------------------------");
-
-  if (!isAtSurface) {
-    sdCard.logData(data);
-  }
+  delay(50);
 }
 
 //---------------------------------------------------State Machine-------------------------------------------
 
 void runStateMachine() {
-  currentDepth = depthSensor.readDepthCm() / 100.0f;
+  depth = depthSensor.readDepthCm();
 
   switch (currentState) {
+    Serial.println("Surface");
     case SURFACE_COMNS:
-      ballast.setPosition(_ballastCLOSED);
-      pitchController.setTargetPitch(0);  // Level at surface
-      pitchController.update();
-
-      checkSurface();
+      while (currentState == SURFACE_COMNS) {  // to prevent data logging at surface
+        checkSurface();
+      }
       break;
 
     case DESCENDING:
-      // Use target pitch for descent
-      pitchController.setTargetPitch(targetPitch);
-      pitchController.update();
+      Serial.println("Descending");
 
-      if (currentDepth >= diveDepth) {  // Use received diveDepth
+      // pitchController.setDivePhase(PitchController::DivePhase::DESCENDING);
+      // pitchController.setTargetPitch(targetPitchD);
+      myServo.setPosition(_ballastOPEN);
+      // while (pitchController.getStepsToGo() != 0) {
+      //   pitchController.update();
+      // }
+
+
+      if (depth > maxDepth) {
         currentState = ASCENDING;
         ballast.setPosition(_ballastCLOSED);
         Serial.println("Reached target depth - beginning ascent");
@@ -155,11 +172,16 @@ void runStateMachine() {
       break;
 
     case ASCENDING:
-      // Maintain target pitch during ascent
-      pitchController.setTargetPitch(targetPitch);
-      pitchController.update();
+      Serial.println("Ascending");
+      myServo.setPosition(_ballastCLOSED);
+      // pitchController.setDivePhase(PitchController::DivePhase::ASCENDING);
+      // pitchController.setTargetPitch(targetPitchU);
 
-      if (currentDepth <= _surfaceThreshold) {
+      // while (pitchController.getStepsToGo() != 0) {
+      //   pitchController.update();
+      // }
+
+      if (depth < _surfaceDepth) {
         currentState = SURFACE_COMNS;
         dataSent = false;
         Serial.println("Surfaced - ready for new commands");
@@ -168,24 +190,21 @@ void runStateMachine() {
       break;
 
     case EMERGENCY:
-      emergencyProcedure();
+      emergencyProcedure();  // no implemented yet
       break;
   }
 }
 //---------------------------------------------------Implementation-------------------------------------------
 
-//-------------------------------------------------Surface Operations-----------------------------------------
-
-void checkSurface() {
-  depth = depthSensor.readDepthCm() / 100.0f;
+void checkSurface() {  // insures that clinet is connected and opened the server before surface operation starts
+  depth = depthSensor.readDepthCm();
 
   if (depth < _surfaceDepth) {
-    while (!isAtSurface && !wifiComms.isConnected()) {
+    if (!(wifiComms.isConnected())) {
       wifiComms.begin();
+    } else {
+      handleSurfaceOperations();
     }
-    isAtSurface = true;
-  } else {
-    handleSurfaceOperations();
   }
 }
 
@@ -199,23 +218,23 @@ void checkSurface() {
 
 void handleSurfaceOperations() {
   // Ensure SD card is available
-  if (!sdCard.isAvailable()) {
-    Serial.println("SD card not available for data transmission");
-    return;
-  }
+  // if (sdCard.isAvailable()) {
+  //   String dataLine;
+  //   while (((dataLine = sdCard.readNextLine()).length() > 0) && wifiComms.isConnected()) {
+  //     wifiComms.sendData(dataLine);
+  //     Serial.println("sent");
+  //     delay(10);  // Small delay between transmissions
+  //   }
+  // }
 
-  // Send all stored data line by line
-  String dataLine;
-  while ((dataLine = sdCard.readNextLine()).length() > 0) {
-    wifiComms.sendData(dataLine);
-    delay(10);  // Small delay between transmissions
-  }
+  // // Send all stored data line by line
+
 
   // Clear data file after successful transmission
-  if (SD.exists(sdCard.getFileName())) {
-    SD.remove(sdCard.getFileName());
-    Serial.println("Cleared data file after transmission");
-  }
+  // if (SD.exists(sdCard.getFileName())) {
+  //   SD.remove(sdCard.getFileName());
+  //   Serial.println("Cleared data file after transmission");
+  // }
 
   // Process incoming commands
   String cmd = wifiComms.receiveCommand();
@@ -233,44 +252,46 @@ void sendStoredData() {
   //sdCard.clearDataFile();
 }
 
-//-------------------------------------------------Processing Data-----------------------------------------
-
+void processCommand(String cmd) {
+  // Command format: "BEGIN_DIVE:PITCHD:-15:PITCHU:15:DEPTH:5;"
+  if (cmd.startsWith("BEGIN_DIVE")) {
+    parseDiveParameters(cmd);
+    currentState = DESCENDING;
+    wifiComms.end();  // Power down WiFi
+  } else if (cmd.startsWith("CHGPIT")) {
+    parseDiveParameters(cmd);
+    currentState = DESCENDING;
+  } else if (cmd.startsWith("GET_DATA")) {
+    Serial.println("Data");
+    String loggedData = dataLogger.readData();
+            if (loggedData.length() > 0) {
+                wifiComms.sendData(loggedData);
+                Serial.println("Sent all logged data to client");
+      }
+  } else if (cmd.startsWith("CLEAR_DATA")) {
+    if (dataLogger.isAvailable()) {
+      dataLogger.clearData();
+      Serial.println("Cleared data file after transmission");
+    }
+  }
+}
 void parseDiveParameters(String cmd) {
-  int pitchIndex = cmd.indexOf("PITCH:");
+  int pitchDIndex = cmd.indexOf("PITCHD:");
+  int pitchUIndex = cmd.indexOf("PITCHU:");
   int depthIndex = cmd.indexOf("DEPTH:");
 
-  if (pitchIndex != -1) {
-    targetPitch = cmd.substring(pitchIndex + 6, cmd.indexOf(':', pitchIndex + 6)).toFloat();
-    targetPitch = constrain(targetPitch, _minPitch, _maxPitch);
+  if (pitchDIndex != -1) {
+    targetPitchU = cmd.substring(pitchDIndex + 7, cmd.indexOf(':', pitchDIndex + 7)).toFloat();
   }
-
+  if (pitchUIndex != -1) {
+    targetPitchD = cmd.substring(pitchUIndex + 7, cmd.indexOf(':', pitchUIndex + 7)).toFloat();
+  }
   if (depthIndex != -1) {
     diveDepth = cmd.substring(depthIndex + 6).toFloat();                     // Get depth from command
     diveDepth = constrain(diveDepth, _surfaceThreshold + 0.05f, _maxDepth);  // Apply constraints
   }
-
-  Serial.print("Dive params - Pitch: ");
-  Serial.print(targetPitch);
-  Serial.print("°, Depth: ");
-  Serial.println(diveDepth);
 }
 
-void processCommand(String cmd) {
-  if (cmd.startsWith("BEGIN_DIVE")) {
-    parseDiveParameters(cmd);
-    currentState = DESCENDING;
-    dataSent = false;
-    wifiComms.end();
-
-    Serial.print("Beginning dive with Pitch:");
-    Serial.print(targetPitch);
-    Serial.print("° to Depth:");
-    Serial.print(diveDepth);
-    Serial.println("m");
-  }
-}
-
-//----------------------------------------------------Emergency--------------------------------------------
 
 void emergencyProcedure() {
   //imediately surface

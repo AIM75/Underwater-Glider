@@ -19,7 +19,7 @@ void PitchController::begin() {
   _enableMotor();
 
   // Configure motion profile (all in mm/s)
-  const float max_speed_mmps = 90.0f;    // Maximum speed (mm/s)
+  const float max_speed_mmps = 50.0f;    // Maximum speed (mm/s)
   const float max_accel_mmps2 = 100.0f;  // Acceleration (mm/s²)
 
   _stepper.setMaxSpeed(_mmToSteps(max_speed_mmps));
@@ -27,13 +27,6 @@ void PitchController::begin() {
 
   // Calibrate on startup
   calibrate();
-}
-void PitchController::_hitLIMSW(int speed, float pos) {
-  _stepper.setSpeed((speed / abs(speed)) * _mmToSteps(abs(speed)));
-  _stepper.moveTo(_mmToSteps(pos));
-  while (_stepper.distanceToGo() != 0) {
-    _stepper.run();
-  }
 }
 
 void PitchController::calibrate() {
@@ -48,11 +41,14 @@ void PitchController::calibrate() {
   _stepper.setCurrentPosition(0);
   _current_mass_pos = 0.0f;
   _limit_min_hit = true;
-
+  
   // Move a bit away from the limit switch
-  _hitLIMSW(70, 5.0f);
+  _stepper.moveTo(_mmToSteps(5.0f));
+  while (_stepper.distanceToGo() != 0) {
+    _stepper.run();
+  }
   // Configure normal motion profile again
-  const float max_speed_mmps = 90.0f;
+  const float max_speed_mmps = 50.0f;
   const float max_accel_mmps2 = 100.0f;
   _stepper.setMaxSpeed(_mmToSteps(max_speed_mmps));
   _stepper.setAcceleration(_mmToSteps(max_accel_mmps2));
@@ -87,7 +83,7 @@ void PitchController::setTargetPitch(float pitch_deg) {  // +ve for pitching up 
 
   // Apply mechanical constraints
   target_mass_pos = constrain(target_mass_pos, 0.0f, _config.max_travel);
-  Serial.println(_mmToSteps(target_mass_pos));
+
   _stepper.moveTo(_mmToSteps(target_mass_pos));
 }
 
@@ -95,27 +91,24 @@ void PitchController::update() {
   // Check limit switches
   _limit_min_hit = !digitalRead(_config.limit_switch_min_pin);
   _limit_max_hit = !digitalRead(_config.limit_switch_max_pin);
-  // Serial.println(_stepper.distanceToGo());
+
   if (_limit_min_hit) {
     _stepper.stop();
     _stepper.setCurrentPosition(0);
     _current_mass_pos = 0.0f;
-    _hitLIMSW(70, 5.0f);
-    // _stepper.moveTo(_mmToSteps(_current_mass_pos + 5.0f));
   } else if (_limit_max_hit) {
     _stepper.stop();
     _stepper.setCurrentPosition(_mmToSteps(_config.max_travel));
     _current_mass_pos = _config.max_travel;
-    _hitLIMSW(-70, _current_mass_pos - 5.0f);
-    Serial.println(_stepper.currentPosition());
-    _stepper.moveTo(48000);
-  }else if (_stepper.distanceToGo() != 0) {
+  }
+
+  if (_stepper.distanceToGo() != 0) {
     _stepper.run();
     if (digitalRead(_config.sleep_pin)) {  // Only update position if motor is awake
       _current_mass_pos = _stepper.currentPosition() / _mmToSteps(1.0f);
     }
   } else {
-    _stepper.stop();
+    _safeSleep();
   }
 }
 
@@ -187,7 +180,7 @@ float PitchController::_descendingModel(float pitch_rad) const {
 
 long PitchController::_mmToSteps(float position_mm) const {
   float revolutions = position_mm / _config.lead_screw_pitch;
-  return round(revolutions * _config.steps_per_rev * _config.microsteps);  // 1/32 microstepping
+  return round(revolutions * _config.steps_per_rev * _config.microsteps);  // 1/16 microstepping
 }
 
 void PitchController::_enableMotor() {

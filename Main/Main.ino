@@ -2,17 +2,25 @@
 
 void setup() {
   Serial.begin(115200);
-
+  pinMode(2, OUTPUT);
   // Initialize modules
-  if (!initializeModules()) {
-    emergencyProcedure();
-  } else {
-    Serial.println("System ready");
+  digitalWrite(2, HIGH);
+  wifiComms.begin();
+  while (!wifiComms.isConnected()) {
+    wifiComms.begin();
+    while (wifiComms.isConnected()) {
+      String cmd = wifiComms.receiveCommand();
+      if (cmd.length() > 0 && cmd.startsWith("INIT_SEQ")) {
+        initializeModules();
+        wifiComms.sendData("INIT");
+        break;
+      }
+    } 
   }
 }
 
 void loop() {
-  updateSensorData();
+  DataLogging();
   runStateMachine();
 
   /*// Debug output
@@ -34,4 +42,3 @@ void loop() {
   */
   delay(1000);
 }
-
