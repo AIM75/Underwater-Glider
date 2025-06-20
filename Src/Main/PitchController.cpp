@@ -32,7 +32,7 @@ void PitchController::_hitLIMSW(int speed, float pos) {
   _stepper.setSpeed((speed / abs(speed)) * _mmToSteps(abs(speed)));
   _stepper.moveTo(_mmToSteps(pos));
   while (_stepper.distanceToGo() != 0) {
-    _stepper.run();
+    _stepper.runSpeed();
   }
 }
 

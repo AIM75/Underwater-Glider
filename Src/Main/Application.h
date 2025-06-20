@@ -4,7 +4,6 @@
 
 // Include section
 #include "Orientation.h"
-#include "MPU6050dmp.h"
 #include "DepthModule.h"
 #include "sdCardModule.h"
 #include "DataLoggerESP.h"
@@ -73,6 +72,7 @@ DataLogger dataLogger("/glider_data.log");
 WiFiComms wifiComms(ssid, password, local_ip, gateway, subnet, wifi_port);
 PitchController pitchController(config);
 Ballast myServo(_servoPIN);
+Servo ser;
 
 //------------------------------------------------------------Variables-------------------------
 
@@ -106,7 +106,9 @@ void emergencyProcedure();
 //-------------------------------------------Initialization and Updating-------------------------------------
 
 bool initializeModules() {
-  myServo.begin(_ballastCLOSED);
+  // myServo.begin(_ballastCLOSED);
+  ser.attach(32);
+  ser.write(160);
   depthSensor.begin();
   wifiComms.begin();
   orientation.begin();
@@ -159,17 +161,18 @@ void runStateMachine() {
         while (pitchController.getStepsToGo() != 0) {
           pitchController.update();
         }
-        isMassMoved = true;
       } else {
-        myServo.setPosition(_ballastOPEN);
+        // myServo.setPosition(_ballastOPEN);
+        ser.write(30);
       }
+        isMassMoved = true;
 
 
 
 
       if (depth > maxDepth) {
         currentState = ASCENDING;
-        myServo.setPosition(_ballastCLOSED);
+        // myServo.setPosition(_ballastCLOSED);
         isMassMoved = false;
         Serial.println("Reached target depth - beginning ascent");
         break;
@@ -178,7 +181,8 @@ void runStateMachine() {
 
     case ASCENDING:
       Serial.println("Ascending");
-      myServo.setPosition(_ballastCLOSED);
+      // myServo.setPosition(_ballastCLOSED);
+      ser.write(160);
       if (isMassMoved == false) {
         pitchController.setDivePhase(PitchController::DivePhase::ASCENDING);
         pitchController.setTargetPitch(targetPitchU);
